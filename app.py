@@ -15,6 +15,9 @@ from database import add_entry, load_history, get_db_stats, check_connection
 from scraper import scrape_model_page
 from ai import ai_analyze, ai_generate_tags
 from app_utils import analyze_single_file_content 
+from core.history import get_db_health
+from core.ai_brain import ai_health_check
+from core.stl_analyzer import stl_health_check 
 
 # --- CONFIGURATION ---
 PRINTER_PROFILES = {
@@ -85,7 +88,7 @@ def main():
         delivery_fee = st.number_input("Delivery Fee (₹)", 0, 2000, 100)
 
     # --- TABS ---
-    tab_scrape, tab_local, tab_history = st.tabs(["🌐 Forensic Scout", "💼 Business Calculator", "📚 Memory Bank"])
+    tab_scrape, tab_local, tab_history, tab_health = st.tabs(["🌐 Forensic Scout", "💼 Business Calculator", "📚 Memory Bank", "🩺 Health"])
 
     # --- TAB 1: WEB SCOUT ---
     with tab_scrape:
@@ -195,6 +198,45 @@ def main():
             st.dataframe(df, use_container_width=True)
         else:
             st.info("No history yet.")
+
+    # ------------------------------------------------
+    # TAB 4 – HEALTH DASHBOARD
+    # ------------------------------------------------
+    with tab_health:
+        st.subheader("🩺 System Health Dashboard")
+
+        col1, col2, col3 = st.columns(3)
+
+        # DB STATUS
+        with col1:
+            st.markdown("### 🗄 Database")
+            db = get_db_health()
+            if db["status"] == "online":
+                st.success("Online")
+                st.write(f"Records: {db['total_records']}")
+                st.write(f"Sheet: {db['sheet_name']}")
+            else:
+                st.error(db.get("message", "Offline"))
+
+        # AI STATUS
+        with col2:
+            st.markdown("### 🧠 AI Engine")
+            ai = ai_health_check()
+            if ai["status"] == "online":
+                st.success("Online")
+                st.write(f"Model: {ai['model']}")
+            else:
+                st.error(ai.get("message", "Offline"))
+
+        # STL STATUS
+        with col3:
+            st.markdown("### 📦 STL Engine")
+            stl = stl_health_check()
+            if stl["status"] == "online":
+                st.success("Online")
+                st.write(f"Engine: {stl['engine']}")
+            else:
+                st.error(stl.get("message", "Offline"))
 
 if __name__ == "__main__":
     main()

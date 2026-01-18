@@ -90,3 +90,20 @@ def test_connection():
 
     except Exception as e:
         return False, f"❌ Connection failed: {e}"
+
+def get_db_health():
+    try:
+        sheet = _get_sheet()
+        if not sheet:
+            return {"status": "offline", "message": "No connection"}
+
+        rows = sheet.get_all_values()
+        total = len(rows) - 1 if len(rows) > 1 else 0
+
+        return {
+            "status": "online",
+            "total_records": total,
+            "sheet_name": sheet.spreadsheet.title
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

@@ -32,3 +32,16 @@ Text:
     return {
         "AI Analysis": response.text.strip()
     }
+
+def ai_health_check():
+    if not API_KEY:
+        return {"status": "offline", "message": "API key missing"}
+
+    try:
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        res = model.generate_content("Say OK")
+        if res.text:
+            return {"status": "online", "model": "gemini-1.5-flash"}
+        return {"status": "error", "message": "No response"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

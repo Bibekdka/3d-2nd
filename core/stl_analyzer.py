@@ -35,3 +35,10 @@ def analyze_stl(
         "Weight (g)": round(weight_g, 2),
         "Estimated Print Time (hr)": time_hr
     }
+
+def stl_health_check():
+    try:
+        import trimesh
+        return {"status": "online", "engine": "trimesh"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
