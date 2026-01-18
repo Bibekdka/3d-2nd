@@ -1,33 +1,18 @@
 # Deployment Guide
 
-Your 3D Brain application is **Production Ready**!
+Your 3D Brain application is **Production Ready** and uses **Google Sheets** for permanent storage!
 
 ## 📦 Key Configuration
 
 | File | Purpose |
 | :--- | :--- |
-| `requirements.txt` | Python dependencies (updated for Grok). |
+| `requirements.txt` | Python dependencies (updated for GSheets). |
 | `packages.txt` | System dependencies for Playwright (Critical for Cloud). |
 | `app.py` | Main entry point. |
-| `scaper.py` | Web scraper (Respects `STREAMLIT_SAFE_MODE`). |
-| `brain.db` | SQLite database (Persists locally, resets on cloud redeploy unless using persistent disk). |
+| `database.py` | Database logic (Now uses **Google Sheets**). |
+| `.streamlit/secrets.toml` | **CRITICAL**: Contains Google Service Account credentials. |
 
-## 🚀 Option A: Streamlit Cloud (Easiest)
-
-1.  **Push Code**: Ensure your code is on GitHub (you already pushed to `3d-2nd`).
-2.  **New App**: Go to [share.streamlit.io](https://share.streamlit.io).
-3.  **Settings**:
-    *   **Repository**: `your-username/3d-2nd`
-    *   **Main File**: `app.py`
-4.  **Advanced Settings (Secrets)**:
-    *   Add your API keys here:
-        ```toml
-        GROK_API_KEY = "xai-..."
-        AI_PROVIDER = "grok"
-        ```
-5.  **Deploy**: Click **Deploy**.
-
-## ☁️ Option B: Render.com (Robust)
+## 🚀 deployment Option: Render.com
 
 1.  **New Web Service**: Connect your GitHub repo.
 2.  **Runtime**: Python 3.
@@ -40,13 +25,27 @@ Your 3D Brain application is **Production Ready**!
     streamlit run app.py
     ```
 5.  **Environment Variables**:
-    *   `GROK_API_KEY`: `xai-...`
-    *   `AI_PROVIDER`: `grok`
-    *   `STREAMLIT_SAFE_MODE`: `false` (Set to `true` if scraper fails).
+    *   `STREAMLIT_SECRETS_PATH`: `/etc/secrets/secrets.toml` (See step 6 below).
+    *   `STREAMLIT_SAFE_MODE`: `false`
+    *   **Note**: You DO NOT need to add `GROK_API_KEY` here if you include it in the secrets file below. If not, add it here.
 
-## ⚠️ Important Note on Database
-Since we are using **SQLite (`brain.db`)**:
-*   On **Streamlit Cloud**: The database will **reset** if the app goes to sleep or reboots.
-*   On **Render**: The database will **reset** on every deployment unless you attach a **Persistent Disk**.
+6.  **Secret Files (CRITICAL STEP)**:
+    Render does not read `.streamlit/secrets.toml` from your repo (it's ignored). You must add it manually.
+    *   Go to your Render Dashboard -> **"Secret Files"** tab (or "Environment" -> "Secret Files").
+    *   Click **"Add Secret File"**.
+    *   **Filename**: `secrets.toml`
+    *   **Content**: Copy the ENTIRE content of your local `.streamlit/secrets.toml`.
+        *   (This includes the `[gsheets]` section AND the `OPENAI_API_KEY` / `GROK_API_KEY`).
+    *   Click **Save**.
 
-**Production Recommendation**: For permanent data storage, switch `database.py` to use **Google Sheets** (which we had before) or a cloud database like **Supabase** or **Render PostgreSQL** in the future.
+    *Why `/etc/secrets/secrets.toml`?*
+    Render mounts secret files to `/etc/secrets/<filename>`. By setting `STREAMLIT_SECRETS_PATH` to this location in Step 5, Streamlit will find your keys.
+
+## ☁️ Option: Streamlit Community Cloud
+
+1.  **Deploy**: Connect your GitHub repo.
+2.  **Advanced Settings**:
+    *   Go to **Secrets** section.
+    *   Paste the content of your local `.streamlit/secrets.toml`.
+    *   Save.
+3.  **Deploy**.
