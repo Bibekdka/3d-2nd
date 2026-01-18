@@ -258,12 +258,12 @@ def main():
 
         # AI Check
         with col2:
-            st.markdown("### 🧠 AI Engine")
+            st.markdown("### 🤖 Grok AI")
             ai = ai_health_check()
             if ai["status"] == "online":
-                st.success(f"Online: {ai.get('model', 'Unknown')}")
+                st.success(f"Online: {ai.get('model')}")
             else:
-                st.error(f"Offline: {ai.get('message', 'Unknown Error')}")
+                st.error(ai.get("message", "Unknown Error"))
         
         st.divider()
         with st.expander("🛠️ Deep Debugger (Click if AI is failing)", expanded=False):

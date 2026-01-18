@@ -1,5 +1,6 @@
 import sqlite3
 import pandas as pd
+import os
 
 DB_PATH = "brain.db"
 
@@ -12,7 +13,8 @@ def check_connection():
         conn.execute("SELECT 1")
         conn.close()
         return True
-    except:
+    except Exception as e:
+        print("DB ERROR:", e)
         return False
 
 def init_db():
