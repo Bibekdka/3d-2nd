@@ -5,8 +5,6 @@ import pandas as pd
 import time
 import os
 
-if sys.platform == 'win32':
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # --- IMPORTS ---
 from database import add_entry, load_history, get_db_stats, check_connection, init_db
