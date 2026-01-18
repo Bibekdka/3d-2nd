@@ -1,12 +1,14 @@
 import os
 import streamlit as st
+import time
+
 try:
     import google.generativeai as genai
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
 
-# LOAD API KEY (Checks Secrets first, then Environment)
+# LOAD API KEY
 if "GEMINI_API_KEY" in st.secrets:
     API_KEY = st.secrets["GEMINI_API_KEY"]
 else:
@@ -17,70 +19,83 @@ if GEMINI_AVAILABLE and API_KEY:
         genai.configure(api_key=API_KEY)
     except Exception: pass
 
-def _get_working_model():
+def _get_working_model(debug_log=None):
     """
-    Tries to find a working model. 
-    Falls back to 'gemini-pro' if 'flash' is unavailable (Fixes 404 error).
+    Iterates through models and TESTS them. 
+    Only returns a model that successfully generates a response.
     """
-    model_priority = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"]
+    # Priority list: Flash (Fast/Cheap) -> Pro (Reliable) -> 1.0 Pro (Legacy)
+    candidates = [
+        "gemini-1.5-flash", 
+        "gemini-1.5-flash-latest", 
+        "gemini-pro", 
+        "gemini-1.0-pro"
+    ]
     
-    for model_name in model_priority:
+    for model_name in candidates:
         try:
+            if debug_log is not None: debug_log.append(f"Testing {model_name}...")
+            
             model = genai.GenerativeModel(model_name)
-            return model
-        except:
+            # CRITICAL: Force a network call to check if it really works
+            response = model.generate_content("test", request_options={"timeout": 5})
+            
+            if response and response.text:
+                if debug_log is not None: debug_log.append(f"✅ SUCCESS: {model_name}")
+                return model
+        except Exception as e:
+            if debug_log is not None: debug_log.append(f"❌ FAILED {model_name}: {str(e)[:100]}")
             continue
-    return genai.GenerativeModel("gemini-pro") # Final fallback
+            
+    # If all fail, return a default wrapper that returns error messages
+    return None
 
 def ai_analyze(text: str) -> dict:
-    fallback = {"summary": "Analysis unavailable", "details": "Check API Key or Quota"}
-    
-    if not GEMINI_AVAILABLE or not API_KEY: return fallback
+    if not GEMINI_AVAILABLE or not API_KEY: 
+        return {"summary": "System Offline", "details": "Check API Key or Library"}
 
     try:
-        # ROBUST MODEL SELECTION
         model = _get_working_model()
-        
-        # Safe generation with timeout protection
+        if not model:
+            return {"summary": "AI Error", "details": "All Gemini models failed (404/Auth). Check Debug Tab."}
+            
         response = model.generate_content(text)
-        
-        if not response or not response.text: return fallback
         return {"summary": "AI Analysis", "details": response.text.strip()}
-    
     except Exception as e:
-        # If the primary attempt fails, try one last desperation fallback to 'gemini-pro'
-        if "404" in str(e) or "not found" in str(e).lower():
-            try:
-                model = genai.GenerativeModel("gemini-pro")
-                response = model.generate_content(text)
-                return {"summary": "AI Analysis (Backup Model)", "details": response.text.strip()}
-            except:
-                pass
         return {"summary": "Error", "details": f"AI Error: {str(e)}"}
 
 def ai_generate_tags(text_summary: str) -> str:
     if not GEMINI_AVAILABLE or not API_KEY: return "#manual #check"
-    
     try:
         model = _get_working_model()
-        prompt = f"Generate 5 short technical hashtags for this 3D print description. Output ONLY the tags. Text: {text_summary[:500]}"
+        if not model: return "#error #offline"
+        
+        prompt = f"Generate 5 short technical hashtags. Output ONLY tags: {text_summary[:500]}"
         response = model.generate_content(prompt)
         return response.text.strip()
     except:
         return "#3dprint #model"
 
-def ai_health_check():
-    """Checks if Gemini is reachable and which model is responding."""
+def ai_debug_connection():
+    """Returns a log of what happened when trying to connect."""
+    logs = []
     if not GEMINI_AVAILABLE:
-        return {"status": "offline", "message": "Library Missing (google-generativeai)"}
+        return ["❌ Library 'google-generativeai' not found."]
     if not API_KEY:
-        return {"status": "offline", "message": "API Key Missing (Check secrets.toml)"}
+        return ["❌ API Key not found in secrets or env."]
     
-    try:
-        # List available models to debug 404s
-        model = _get_working_model()
-        # Simple ping
-        model.generate_content("ping")
-        return {"status": "online", "model": f"Active ({model.model_name.split('/')[-1]})"}
-    except Exception as e:
-        return {"status": "offline", "message": str(e)[:50]}
+    logs.append(f"🔑 API Key found (ends in ...{str(API_KEY)[-4:]})")
+    _get_working_model(debug_log=logs)
+    return logs
+
+def ai_health_check():
+    """Simple status check for the UI badge."""
+    if not GEMINI_AVAILABLE: return {"status": "offline", "message": "Lib Missing"}
+    if not API_KEY: return {"status": "offline", "message": "Key Missing"}
+    
+    model = _get_working_model()
+    if model:
+        name = model.model_name.split("/")[-1] if hasattr(model, "model_name") else "Active"
+        return {"status": "online", "model": name}
+    else:
+        return {"status": "offline", "message": "All Models Failed"}

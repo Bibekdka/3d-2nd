@@ -8,10 +8,10 @@ import os
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-# --- CORRECTED IMPORTS (No 'core' folder) ---
+# --- IMPORTS ---
 from database import add_entry, load_history, get_db_stats, check_connection
 from scraper import scrape_model_page
-from ai import ai_analyze, ai_generate_tags, ai_health_check
+from ai import ai_analyze, ai_generate_tags, ai_health_check, ai_debug_connection
 from app_utils import analyze_single_file_content 
 
 # --- CONFIGURATION ---
@@ -33,15 +33,13 @@ def main():
     with st.sidebar:
         st.title("🧠 3D Business Brain")
         
-        # Quick Diagnosis
         if st.button("🚑 Quick Diagnosis"):
-            if check_connection(): st.success("Database: OK")
-            else: st.error("Database: Fail")
-            
             ai_status = ai_health_check()
-            if ai_status["status"] == "online": st.success("AI: OK")
-            else: st.error(f"AI: {ai_status['message']}")
-
+            if ai_status["status"] == "online": 
+                st.success(f"AI: OK ({ai_status.get('model', 'Unknown')})")
+            else: 
+                st.error(f"AI: {ai_status['message']}")
+                
         st.divider()
         st.subheader("🖨️ Tech Specs")
         printer_name = st.selectbox("Printer Profile", list(st.session_state["printers"].keys()))
@@ -84,6 +82,7 @@ def main():
                 st.write("🧠 Analyzing design geometry...")
                 prompt = f"Analyze this 3D model for printing risks and summary: {data['text'][:5000]}"
                 res = ai_analyze(prompt)
+                
                 tags = ai_generate_tags(res['details'])
                 
                 st.session_state['last_scan'] = {
@@ -161,7 +160,7 @@ def main():
         if not df.empty: st.dataframe(df, use_container_width=True)
         else: st.info("No history yet.")
 
-    # --- TAB 4: HEALTH DASHBOARD (FIXED) ---
+    # --- TAB 4: HEALTH DASHBOARD ---
     with tab_health:
         st.subheader("🩺 System Health")
         col1, col2 = st.columns(2)
@@ -171,19 +170,26 @@ def main():
             st.markdown("### 🗄 Database")
             if check_connection():
                 st.success("Online")
-                st.write(f"Connected to Google Sheets")
             else:
-                st.error("Offline (Check secrets)")
+                st.error("Offline")
 
         # AI Check
         with col2:
             st.markdown("### 🧠 AI Engine")
             ai = ai_health_check()
             if ai["status"] == "online":
-                st.success("Online")
-                st.write(f"Model: {ai['model']}")
+                st.success(f"Online: {ai.get('model', 'Unknown')}")
             else:
-                st.error(ai.get("message", "Offline"))
+                st.error(f"Offline: {ai.get('message', 'Unknown Error')}")
+        
+        st.divider()
+        with st.expander("🛠️ Deep Debugger (Click if AI is failing)", expanded=False):
+            if st.button("Run Connection Test"):
+                logs = ai_debug_connection()
+                for log in logs:
+                    if "❌" in log: st.error(log)
+                    elif "✅" in log: st.success(log)
+                    else: st.info(log)
 
 if __name__ == "__main__":
     main()
