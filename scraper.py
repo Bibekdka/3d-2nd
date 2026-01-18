@@ -66,13 +66,13 @@ def scrape_model_page(url, status_callback=None):
             
             # Filter for useful images
             images = page.eval_on_selector_all("img", """
-                imgs => imgs.map(i => i.src).filter(src => 
-                    src.startsWith('http') && 
-                    !src.includes('avatar') && 
-                    !src.includes('icon') &&
-                    !src.includes('logo') &&
+                imgs => imgs.filter(i => 
+                    i.src.startsWith('http') && 
+                    !i.src.includes('avatar') && 
+                    !i.src.includes('icon') &&
+                    !i.src.includes('logo') &&
                     i.naturalWidth > 200
-                )
+                ).map(i => i.src)
             """)
             
             browser.close()

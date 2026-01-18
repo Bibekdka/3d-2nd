@@ -115,7 +115,7 @@ def main():
             st.info(f"Tags: {scan['tags']}")
             
             if st.button("💾 Save to Brain"):
-                if add_entry("Web Scrape", scan['url'], scan['details'], 0, scan['summary'], scan['tags']):
+                if add_entry("Web Scrape", scan['url'], scan['details'], 0, scan['summary'], scan['tags'], scan['images']):
                     st.success("Saved!")
                 else:
                     st.error("Database Error.")
