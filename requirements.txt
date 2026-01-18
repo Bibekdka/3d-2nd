@@ -5,4 +5,7 @@ gspread
 oauth2client
 trimesh
 numpy
-google-generativeai
+google-generativeai>=0.5.0
+playwright
+pandas
+reportlab
