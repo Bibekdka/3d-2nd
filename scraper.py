@@ -77,13 +77,13 @@ def scrape_model_page(url, status_callback=None):
             
             browser.close()
             
-            # Limit text size for AI
-            cleaned_text = "\n".join([l.strip() for l in text.splitlines() if len(l.strip()) > 30][:10000])
+            # Limit text size for AI (Increased to ~10MB as requested)
+            cleaned_text = "\n".join([l.strip() for l in text.splitlines() if len(l.strip()) > 30][:10000000])
             
             report("✅ Extraction complete.")
             return {
                 "text": cleaned_text,
-                "images": list(set(images))[:10],
+                "images": list(set(images))[:500],
                 "debug": logs
             }
 
