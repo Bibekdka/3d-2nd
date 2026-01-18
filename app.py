@@ -10,10 +10,18 @@ if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # IMPORTS
-from database import add_entry, load_history, update_print_status, get_learning_context, get_db_stats, check_connection
+from core.history import save_history, load_history, update_print_status, get_db_stats, check_connection, test_connection
 from scraper import scrape_model_page
-from ai import ai_analyze, ai_generate_tags
-from app_utils import analyze_single_file_content 
+from core.ai_brain import ai_notes
+from core.stl_analyzer import analyze_stl
+from core.calculator import calculate_cost 
+
+# --- CONFIGURATION ---
+
+
+
+
+
 
 # --- CONFIGURATION ---
 PRINTER_PROFILES = {
@@ -33,6 +41,14 @@ def main():
     # --- SIDEBAR: The Brain Center & Global Config ---
     with st.sidebar:
         st.title("🧠 3D Business Brain")
+
+        with st.expander("🔌 System Status"):
+            if st.button("🧪 Test Google Sheets Connection"):
+                ok, msg = test_connection()
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
         
         # 1. System Health
         if check_connection():
@@ -125,81 +141,66 @@ def main():
             st.markdown(scan['details'])
             st.info(f"Generated Tags: {scan['tags']}")
             
+
             if st.button("💾 Save to Brain (History)"):
-                if add_entry("Web Scrape", scan['url'], scan['details'], 0, scan['summary'], scan['tags']):
+                if save_history("Web Scrape", scan['url'], scan['details'], scan['summary']):
                     st.success("Saved to Database!")
                 else:
                     st.error("Database Error.")
 
     # --- TAB 2: BUSINESS CALCULATOR (Feature 2: Dynamic Pricing) ---
     with tab_local:
-        st.header("💼 Quote Generator")
-        
-        uploaded_files = st.file_uploader("Upload STL Files", type=["stl"], accept_multiple_files=True)
-        
-        if uploaded_files:
-            total_invoice_value = 0
-            
-            st.markdown("### 🧾 Itemized Breakdown")
-            
-            for stl in uploaded_files:
-                stl.seek(0)
-                # 1. Physical Analysis
-                stats = analyze_single_file_content(
-                    stl.read(), stl.name, density, cost_kg, infill, walls,
-                    current_printer['speed'], current_printer['nozzle']
-                )
-                
-                if "error" in stats:
-                    st.error(f"Error reading {stl.name}: {stats['error']}")
-                    continue
+        st.subheader("📦 STL Auto Cost Analyzer")
 
-                # 2. Business Math (The Logic you asked for)
-                print_time_hours = stats['Print Time (hr)']
-                material_cost = stats['Cost (₹)']
-                weight_g = stats['Weight (g)']
-                
-                # Electricity: (Watts / 1000) * Hours * Rate
-                power_consumption_kwh = (current_printer['watts'] / 1000) * print_time_hours
-                electricity_cost = power_consumption_kwh * electricity_rate
-                
-                # Labor: Hours * Rate
-                labor_cost = print_time_hours * labor_rate
-                
-                # Base Cost
-                base_cost = material_cost + electricity_cost + labor_cost
-                
-                # Profit
-                profit_amount = base_cost * (profit_margin / 100)
-                
-                # Total before Tax
-                selling_price = base_cost + profit_amount
-                
-                total_invoice_value += selling_price
+        material = st.selectbox("Material", ["PLA", "PETG", "ABS", "TPU"])
+        infill = st.slider("Infill %", 10, 100, 20)
 
-                # 3. Display Row
-                with st.expander(f"📄 {stl.name} - Est: ₹{round(selling_price, 2)}", expanded=True):
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("Weight", f"{weight_g}g")
-                    c2.metric("Time", f"{print_time_hours}h")
-                    c3.metric("Material Cost", f"₹{material_cost}")
-                    c4.metric("Elec + Labor", f"₹{round(electricity_cost + labor_cost, 2)}")
-                    
-                    st.caption(f"Base Cost: ₹{round(base_cost, 2)} | Profit: ₹{round(profit_amount, 2)}")
+        speed = st.number_input("Print Speed (mm/s)", 30, 200, 60)
+        nozzle = st.selectbox("Nozzle (mm)", [0.2, 0.4, 0.6])
 
-            st.divider()
-            
-            # 4. Final Invoice
-            gst_amount = total_invoice_value * (gst_percent / 100)
-            final_total = total_invoice_value + gst_amount + delivery_fee
-            
-            st.markdown("## 💰 Final Quote")
-            
-            i1, i2, i3, i4 = st.columns(4)
-            i1.metric("Subtotal (Items)", f"₹{round(total_invoice_value, 2)}")
-            i2.metric(f"GST ({gst_percent}%)", f"₹{round(gst_amount, 2)}")
-            i3.metric("Delivery", f"₹{delivery_fee}")
-            i4.metric("GRAND TOTAL", f"₹{round(final_total, 2)}", delta="Profit Included")
+        filament_price = st.number_input("Filament ₹ / kg", 500, 5000, 1500)
+        electricity_hr = st.number_input("Electricity ₹ / hr", 0.0, 50.0, 5.0)
+        machine_wear_hr = st.number_input("Machine Wear ₹ / hr", 0.0, 50.0, 3.0)
+        labour = st.number_input("Labour ₹", 0, 1000, 50)
+        delivery = st.number_input("Delivery ₹", 0, 1000, 60)
+
+        profit = st.slider("Profit %", 0, 100, 30)
+        gst = st.slider("GST %", 0, 28, 18)
+
+        uploaded = st.file_uploader("Upload STL", type=["stl"])
+
+        if uploaded:
+            uploaded_bytes = uploaded.read()
+            stl_data = analyze_stl(
+                uploaded_bytes,
+                material,
+                infill,
+                speed,
+                nozzle
+            )
+
+            st.markdown("### 🔍 STL Analysis")
+            st.json(stl_data)
+
+            cost = calculate_cost(
+                filament_price,
+                stl_data["Weight (g)"],
+                electricity_hr,
+                stl_data["Estimated Print Time (hr)"],
+                labour,
+                delivery,
+                machine_wear_hr,
+                profit,
+                gst
+            )
+
+            st.markdown("### 💰 Cost Breakdown")
+            st.json(cost)
+
+            if st.button("💾 Save Calculation to History"):
+                 if save_history("STL Cost", uploaded.name, stl_data, cost): 
+                     st.success("Saved Calculation!")
+
 
     # --- TAB 3: MEMORY BANK (Feature 4: History) ---
     with tab_history:
