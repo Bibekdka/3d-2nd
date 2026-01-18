@@ -1,101 +1,100 @@
 import os
 import streamlit as st
-import time
-
 try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
 except ImportError:
-    GEMINI_AVAILABLE = False
+    OPENAI_AVAILABLE = False
+
+# CONFIGURATION
+MODEL_PRIMARY = "gpt-4o-mini"
+MODEL_FALLBACK = "gpt-4.1-mini"
 
 # LOAD API KEY
-if "GEMINI_API_KEY" in st.secrets:
-    API_KEY = st.secrets["GEMINI_API_KEY"]
+if "OPENAI_API_KEY" in st.secrets:
+    API_KEY = st.secrets["OPENAI_API_KEY"]
 else:
-    API_KEY = os.getenv("GEMINI_API_KEY")
+    API_KEY = os.getenv("OPENAI_API_KEY")
 
-if GEMINI_AVAILABLE and API_KEY:
+def _get_client():
+    if not OPENAI_AVAILABLE or not API_KEY:
+        return None
+    return OpenAI(api_key=API_KEY)
+
+def _safe_completion(client, messages, max_tokens=None):
+    """Attempts generation with primary model, falls back if needed."""
     try:
-        genai.configure(api_key=API_KEY)
-    except Exception: pass
-
-def _get_working_model(debug_log=None):
-    """
-    Iterates through models and TESTS them. 
-    Only returns a model that successfully generates a response.
-    """
-    # Priority list: Flash (Fast/Cheap) -> Pro (Reliable) -> 1.0 Pro (Legacy)
-    candidates = [
-        "gemini-1.5-flash", 
-        "gemini-1.5-flash-latest", 
-        "gemini-pro", 
-        "gemini-1.0-pro"
-    ]
-    
-    for model_name in candidates:
+        return client.chat.completions.create(
+            model=MODEL_PRIMARY,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=0.7
+        )
+    except Exception as e1:
+        print(f"⚠️ Primary Model Failed ({MODEL_PRIMARY}): {e1}")
         try:
-            if debug_log is not None: debug_log.append(f"Testing {model_name}...")
-            
-            model = genai.GenerativeModel(model_name)
-            # CRITICAL: Force a network call to check if it really works
-            response = model.generate_content("test", request_options={"timeout": 5})
-            
-            if response and response.text:
-                if debug_log is not None: debug_log.append(f"✅ SUCCESS: {model_name}")
-                return model
-        except Exception as e:
-            if debug_log is not None: debug_log.append(f"❌ FAILED {model_name}: {str(e)[:100]}")
-            continue
-            
-    # If all fail, return a default wrapper that returns error messages
-    return None
+            return client.chat.completions.create(
+                model=MODEL_FALLBACK,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=0.7
+            )
+        except Exception as e2:
+            raise e2
 
 def ai_analyze(text: str) -> dict:
-    if not GEMINI_AVAILABLE or not API_KEY: 
-        return {"summary": "System Offline", "details": "Check API Key or Library"}
+    client = _get_client()
+    if not client:
+        return {"summary": "System Offline", "details": "OpenAI Library or Key Missing"}
 
     try:
-        model = _get_working_model()
-        if not model:
-            return {"summary": "AI Error", "details": "All Gemini models failed (404/Auth). Check Debug Tab."}
-            
-        response = model.generate_content(text)
-        return {"summary": "AI Analysis", "details": response.text.strip()}
+        response = _safe_completion(
+            client,
+            messages=[
+                {"role": "system", "content": "You are an expert 3D printing engineer. Analyze the following model data."},
+                {"role": "user", "content": f"Analyze this 3D model text for printing risks, summary, and material recommendations: {text[:8000]}"}
+            ]
+        )
+        result = response.choices[0].message.content
+        return {"summary": "GPT Analysis", "details": result}
     except Exception as e:
-        return {"summary": "Error", "details": f"AI Error: {str(e)}"}
+        return {"summary": "Error", "details": f"GPT Error: {str(e)}"}
 
 def ai_generate_tags(text_summary: str) -> str:
-    if not GEMINI_AVAILABLE or not API_KEY: return "#manual #check"
-    try:
-        model = _get_working_model()
-        if not model: return "#error #offline"
-        
-        prompt = f"Generate 5 short technical hashtags. Output ONLY tags: {text_summary[:500]}"
-        response = model.generate_content(prompt)
-        return response.text.strip()
-    except:
-        return "#3dprint #model"
+    client = _get_client()
+    if not client: return "#manual"
 
-def ai_debug_connection():
-    """Returns a log of what happened when trying to connect."""
-    logs = []
-    if not GEMINI_AVAILABLE:
-        return ["❌ Library 'google-generativeai' not found."]
-    if not API_KEY:
-        return ["❌ API Key not found in secrets or env."]
-    
-    logs.append(f"🔑 API Key found (ends in ...{str(API_KEY)[-4:]})")
-    _get_working_model(debug_log=logs)
-    return logs
+    try:
+        response = _safe_completion(
+            client,
+            messages=[
+                {"role": "system", "content": "You are a tagging bot. Output only hashtags."},
+                {"role": "user", "content": f"Generate 5 technical hashtags for this 3D print: {text_summary[:500]}"}
+            ]
+        )
+        return response.choices[0].message.content.strip()
+    except:
+        return "#3dprint #gpt"
 
 def ai_health_check():
-    """Simple status check for the UI badge."""
-    if not GEMINI_AVAILABLE: return {"status": "offline", "message": "Lib Missing"}
+    """Checks if GPT is reachable."""
+    if not OPENAI_AVAILABLE: return {"status": "offline", "message": "Library Missing"}
     if not API_KEY: return {"status": "offline", "message": "Key Missing"}
-    
-    model = _get_working_model()
-    if model:
-        name = model.model_name.split("/")[-1] if hasattr(model, "model_name") else "Active"
-        return {"status": "online", "model": name}
-    else:
-        return {"status": "offline", "message": "All Models Failed"}
+
+    try:
+        client = _get_client()
+        # Simple test generation
+        _safe_completion(
+            client,
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=1
+        )
+        return {"status": "online", "model": MODEL_PRIMARY}
+    except Exception as e:
+        err_msg = str(e)
+        if "quota" in err_msg.lower():
+            return {"status": "offline", "message": "No Credits (Check Billing)"}
+        return {"status": "offline", "message": err_msg[:50]}
+
+def ai_debug_connection():
+    return [str(ai_health_check())]

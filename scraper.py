@@ -17,7 +17,7 @@ def scrape_model_page(url, status_callback=None):
     """
     Robust scraper: Launches fresh browser per request to prevent Threading Errors.
     """
-    if SAFE_MODE: return {"error": "Safe Mode enabled."}
+    if SAFE_MODE: return {"error": "Scraper disabled in production safe mode"}
     
     logs = []
     def report(msg):

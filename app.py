@@ -9,7 +9,7 @@ if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # --- IMPORTS ---
-from database import add_entry, load_history, get_db_stats, check_connection
+from database import add_entry, load_history, get_db_stats, check_connection, init_db
 from scraper import scrape_model_page
 from ai import ai_analyze, ai_generate_tags, ai_health_check, ai_debug_connection
 from app_utils import analyze_single_file_content 
@@ -28,6 +28,9 @@ def main():
     
     if "printers" not in st.session_state: 
         st.session_state["printers"] = PRINTER_PROFILES.copy()
+
+    # Initialize DB
+    init_db()
 
     # --- SIDEBAR ---
     with st.sidebar:
@@ -62,7 +65,15 @@ def main():
         delivery_fee = st.number_input("Delivery Fee (₹)", 0, 2000, 100)
 
     # --- TABS ---
-    tab_scrape, tab_local, tab_history, tab_health = st.tabs(["🌐 Forensic Scout", "💼 Business Calculator", "📚 Memory Bank", "🩺 Health"])
+    tab_scrape, tab_local, tab_history, tab_db, tab_health = st.tabs(
+        [
+            "🌐 Forensic Scout",
+            "💼 Business Calculator",
+            "📚 Memory Bank",
+            "🗄 Database Explorer",
+            "🩺 Health"
+        ]
+    )
 
     # --- TAB 1: WEB SCOUT ---
     with tab_scrape:
@@ -159,6 +170,78 @@ def main():
         df = load_history()
         if not df.empty: st.dataframe(df, use_container_width=True)
         else: st.info("No history yet.")
+
+    # --- TAB 4: DATABASE EXPLORER ---
+    with tab_db:
+        st.header("🗄 Database Explorer")
+
+        df = load_history()
+
+        if df.empty:
+            st.warning("Database is empty.")
+            # We don't stop here so the rest of the UI still renders if needed, 
+            # but user said 'st.stop()', so we follow instructions.
+            st.stop()
+
+        # --- Filters ---
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+            # Handle potential missing 'type' column safely
+            if 'type' in df.columns:
+                type_options = ["All"] + sorted(df["type"].dropna().unique().tolist())
+            else:
+                type_options = ["All"]
+            
+            type_filter = st.selectbox(
+                "Filter by Type",
+                type_options
+            )
+
+        with c2:
+            search = st.text_input("Search (URL, tags, details)")
+
+        with c3:
+            sort_by = st.selectbox(
+                "Sort by",
+                ["Newest", "Oldest", "Highest Amount", "Lowest Amount"]
+            )
+
+        # --- Apply Filters ---
+        filtered_df = df.copy()
+
+        if type_filter != "All":
+            filtered_df = filtered_df[filtered_df["type"] == type_filter]
+
+        if search:
+            # Robust string conversion for search
+            filtered_df = filtered_df[
+                filtered_df.apply(
+                    lambda row: search.lower() in str(row).lower(),
+                    axis=1
+                )
+            ]
+
+        # --- Sorting ---
+        if sort_by == "Newest" and "created_at" in filtered_df.columns:
+            filtered_df = filtered_df.sort_values("created_at", ascending=False)
+        elif sort_by == "Oldest" and "created_at" in filtered_df.columns:
+            filtered_df = filtered_df.sort_values("created_at", ascending=True)
+        elif sort_by == "Highest Amount" and "amount" in filtered_df.columns:
+            filtered_df = filtered_df.sort_values("amount", ascending=False)
+        elif sort_by == "Lowest Amount" and "amount" in filtered_df.columns:
+            filtered_df = filtered_df.sort_values("amount", ascending=True)
+
+        # --- Display ---
+        st.dataframe(filtered_df, use_container_width=True)
+
+        # --- Export ---
+        st.download_button(
+            "⬇️ Download CSV",
+            filtered_df.to_csv(index=False),
+            file_name="database_export.csv",
+            mime="text/csv"
+        )
 
     # --- TAB 4: HEALTH DASHBOARD ---
     with tab_health:

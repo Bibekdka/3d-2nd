@@ -22,6 +22,9 @@ def analyze_single_file_content(file_content, file_name, density, cost_per_kg, i
         file_obj = io.BytesIO(file_content)
         mesh = trimesh.load(file_obj, file_type='stl', force="mesh")
         
+        if not mesh.is_watertight:
+            mesh = mesh.convex_hull
+        
         if mesh.is_empty: raise ValueError("Empty mesh")
         
         volume_cm3 = mesh.volume / 1000.0
