@@ -168,7 +168,7 @@ def main():
     with tab_history:
         st.header("📚 History")
         df = load_history()
-        if not df.empty: st.dataframe(df, use_container_width=True)
+        if not df.empty: st.dataframe(df, width="stretch")
         else: st.info("No history yet.")
 
     # --- TAB 4: DATABASE EXPLORER ---
@@ -233,7 +233,7 @@ def main():
             filtered_df = filtered_df.sort_values("amount", ascending=True)
 
         # --- Display ---
-        st.dataframe(filtered_df, use_container_width=True)
+        st.dataframe(filtered_df, width="stretch")
 
         # --- Export ---
         st.download_button(
