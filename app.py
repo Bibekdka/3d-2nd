@@ -42,6 +42,29 @@ def main():
                 st.error(f"AI: {ai_status['message']}")
                 
         st.divider()
+        st.subheader("🤖 AI Control")
+
+        if "ai_enabled" not in st.session_state:
+            st.session_state["ai_enabled"] = False
+
+        ai_toggle = st.toggle(
+            "Enable Local AI (Ollama)",
+            value=st.session_state["ai_enabled"]
+        )
+
+        st.session_state["ai_enabled"] = ai_toggle
+
+        if ai_toggle:
+            ai_status = ai_health_check()
+            if ai_status["status"] == "online":
+                st.success(f"AI Connected ({ai_status['model']})")
+            else:
+                st.error("AI Enabled but NOT Connected")
+                st.info("Start Ollama + AI server to connect")
+        else:
+            st.warning("AI Disabled (No AI calls)")
+
+        st.divider()
         st.subheader("🖨️ Tech Specs")
         printer_name = st.selectbox("Printer Profile", list(st.session_state["printers"].keys()))
         current_printer = st.session_state["printers"][printer_name]
@@ -91,16 +114,22 @@ def main():
                 st.write("🧠 Analyzing design geometry...")
                 prompt = f"Analyze this 3D model for printing risks and summary: {data['text'][:5000]}"
                 
-                # --- AI FALLBACK LOGIC ---
-                res = ai_analyze(prompt)
+                st.write("🧠 Analyzing design geometry...")
+                prompt = f"Analyze this 3D model for printing risks and summary: {data['text'][:5000]}"
                 
-                # If AI failed or is offline, use raw text
-                if res.get("summary") in ["Error", "Offline"] or "missing" in res.get("details", "").lower():
-                    st.warning(f"AI Offline: {res.get('details')}. Showing raw text instead.")
+                # --- AI LOGIC WITH GUARD ---
+                if st.session_state.get("ai_enabled"):
+                    res = ai_analyze(prompt)
+                else:
                     res = {
-                        "summary": "Raw Scraped Data (AI Offline)",
-                        "details": "### ⚠️ AI Analysis Unavailable\n\n" + data['text'][:3000]
+                        "summary": "AI Disabled",
+                        "details": "Enable AI in sidebar to generate analysis.\n\n" + data['text'][:500] + "..."
                     }
+                
+                # If AI returned error (even when enabled)
+                if res.get("summary") in ["Error", "Offline", "AI Error"] or "missing" in res.get("details", "").lower():
+                    st.warning(f"AI Issue: {res.get('details')}. Showing raw text.")
+
                 
                 tags = ai_generate_tags(res['details'])
                 
@@ -251,27 +280,27 @@ def main():
             mime="text/csv"
         )
 
-    # --- TAB 4: HEALTH DASHBOARD ---
+    # --- HEALTH TAB ---
     with tab_health:
-        st.subheader("🩺 System Health")
+        st.header("🩺 System Health")
+        
         col1, col2 = st.columns(2)
-
-        # DB Check
         with col1:
-            st.markdown("### 🗄 Database")
-            if check_connection():
-                st.success("Online")
-            else:
-                st.error("Offline")
-
-        # AI Check
+            db_is_connected = check_connection()
+            st.metric("Database", "Online" if db_is_connected else "Offline", 
+                     delta="Connected" if db_is_connected else "-Disconnected")
+            
         with col2:
-            st.markdown("### 🤖 Grok AI")
-            ai = ai_health_check()
-            if ai["status"] == "online":
-                st.success(f"Online: {ai.get('model')}")
+            st.markdown("### 🤖 Local AI (Ollama)")
+            if not st.session_state.get("ai_enabled"):
+                st.warning("AI Disabled")
             else:
-                st.error(ai.get("message", "Unknown Error"))
+                ai = ai_health_check()
+                if ai["status"] == "online":
+                    st.success(f"Online: {ai['model']}")
+                else:
+                    st.error("Offline")
+                    st.info("Run: start_ai.bat")
         
         st.divider()
         with st.expander("🛠️ Deep Debugger (Click if AI is failing)", expanded=False):
