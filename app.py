@@ -109,6 +109,29 @@ def main():
             scan = st.session_state['last_scan']
             if scan['images']:
                 st.image(scan['images'][:3], width=200, caption=["Img 1", "Img 2", "Img 3"])
+                
+                # --- NEW: Download Images ---
+                import io
+                import zipfile
+                import requests as req_lib
+
+                if st.button("📥 Download All Images"):
+                    with st.spinner("Zipping images..."):
+                        zip_buffer = io.BytesIO()
+                        with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+                            for idx, img_url in enumerate(scan['images']):
+                                try:
+                                    img_data = req_lib.get(img_url, timeout=5).content
+                                    filename = f"image_{idx+1}.jpg"
+                                    zip_file.writestr(filename, img_data)
+                                except: pass
+                        
+                        st.download_button(
+                            label="⬇️ Click to Download ZIP",
+                            data=zip_buffer.getvalue(),
+                            file_name="scraped_images.zip",
+                            mime="application/zip"
+                        )
             
             st.markdown("### 📝 AI Report")
             st.markdown(scan['details'])
@@ -215,9 +238,10 @@ def main():
 
         if search:
             # Robust string conversion for search
+            search_lower = search.lower()
             filtered_df = filtered_df[
-                filtered_df.apply(
-                    lambda row: search.lower() in str(row).lower(),
+                filtered_df.astype(str).apply(
+                    lambda row: row.str.lower().str.contains(search_lower).any(),
                     axis=1
                 )
             ]

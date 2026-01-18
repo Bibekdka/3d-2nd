@@ -71,7 +71,7 @@ def scrape_model_page(url, status_callback=None):
                     !i.src.includes('avatar') && 
                     !i.src.includes('icon') &&
                     !i.src.includes('logo') &&
-                    i.naturalWidth > 200
+                    (i.naturalWidth > 150 || i.closest('.comment-list') || i.closest('.comment-body'))
                 ).map(i => i.src)
             """)
             
