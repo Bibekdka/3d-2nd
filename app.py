@@ -92,7 +92,17 @@ def main():
                 
                 st.write("🧠 Analyzing design geometry...")
                 prompt = f"Analyze this 3D model for printing risks and summary: {data['text'][:5000]}"
+                
+                # --- AI FALLBACK LOGIC ---
                 res = ai_analyze(prompt)
+                
+                # If AI failed or is offline, use raw text
+                if res.get("summary") in ["Error", "Offline"] or "missing" in res.get("details", "").lower():
+                    st.warning(f"AI Offline: {res.get('details')}. Showing raw text instead.")
+                    res = {
+                        "summary": "Raw Scraped Data (AI Offline)",
+                        "details": "### ⚠️ AI Analysis Unavailable\n\n" + data['text'][:3000]
+                    }
                 
                 tags = ai_generate_tags(res['details'])
                 
@@ -109,36 +119,13 @@ def main():
             scan = st.session_state['last_scan']
             if scan['images']:
                 st.image(scan['images'][:3], width=200, caption=["Img 1", "Img 2", "Img 3"])
-                
-                # --- NEW: Download Images ---
-                import io
-                import zipfile
-                import requests as req_lib
-
-                if st.button("📥 Download All Images"):
-                    with st.spinner("Zipping images..."):
-                        zip_buffer = io.BytesIO()
-                        with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
-                            for idx, img_url in enumerate(scan['images']):
-                                try:
-                                    img_data = req_lib.get(img_url, timeout=5).content
-                                    filename = f"image_{idx+1}.jpg"
-                                    zip_file.writestr(filename, img_data)
-                                except: pass
-                        
-                        st.download_button(
-                            label="⬇️ Click to Download ZIP",
-                            data=zip_buffer.getvalue(),
-                            file_name="scraped_images.zip",
-                            mime="application/zip"
-                        )
             
             st.markdown("### 📝 AI Report")
             st.markdown(scan['details'])
             st.info(f"Tags: {scan['tags']}")
             
             if st.button("💾 Save to Brain"):
-                if add_entry("Web Scrape", scan['url'], scan['details'], 0, scan['summary'], scan['tags'], scan['images']):
+                if add_entry("Web Scrape", scan['url'], scan['details'], 0, scan['summary'], scan['tags']):
                     st.success("Saved!")
                 else:
                     st.error("Database Error.")
@@ -191,7 +178,7 @@ def main():
     with tab_history:
         st.header("📚 History")
         df = load_history()
-        if not df.empty: st.dataframe(df, width="stretch")
+        if not df.empty: st.dataframe(df, use_container_width=True)
         else: st.info("No history yet.")
 
     # --- TAB 4: DATABASE EXPLORER ---
@@ -238,10 +225,9 @@ def main():
 
         if search:
             # Robust string conversion for search
-            search_lower = search.lower()
             filtered_df = filtered_df[
-                filtered_df.astype(str).apply(
-                    lambda row: row.str.lower().str.contains(search_lower).any(),
+                filtered_df.apply(
+                    lambda row: search.lower() in str(row).lower(),
                     axis=1
                 )
             ]
@@ -257,7 +243,7 @@ def main():
             filtered_df = filtered_df.sort_values("amount", ascending=True)
 
         # --- Display ---
-        st.dataframe(filtered_df, width="stretch")
+        st.dataframe(filtered_df, use_container_width=True)
 
         # --- Export ---
         st.download_button(
