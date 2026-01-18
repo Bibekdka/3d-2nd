@@ -3,5 +3,5 @@ pandas
 trimesh
 reportlab
 playwright
-openai>=1.0.0
+requests
 numpy
