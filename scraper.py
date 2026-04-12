@@ -8,10 +8,12 @@ from playwright.sync_api import sync_playwright
 SAFE_MODE = os.getenv("STREAMLIT_SAFE_MODE", "false").lower() == "true"
 
 def install_playwright_if_needed():
+    """Install Playwright browser on cloud environments."""
     if sys.platform != "win32":
         try:
             subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
-        except: pass
+        except:
+            pass
 
 def scrape_model_page(url, status_callback=None):
     """
@@ -78,8 +80,8 @@ def scrape_model_page(url, status_callback=None):
             
             browser.close()
             
-            # Limit text size for AI (Increased to ~10MB as requested)
-            cleaned_text = "\n".join([l.strip() for l in text.splitlines() if len(l.strip()) > 30][:10000000])
+            # Limit text size for AI processing
+            cleaned_text = "\n".join([l.strip() for l in text.splitlines() if len(l.strip()) > 30][:50000])
             
             report("✅ Extraction complete.")
             return {

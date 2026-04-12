@@ -2,6 +2,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
+*.pyd
 
 # Environment variables
 .env
@@ -14,7 +16,6 @@ venv.bak/
 
 # Streamlit
 .streamlit/secrets.toml
-.streamlit/
 !/.streamlit/config.toml
 
 # Distribution / packaging
@@ -25,3 +26,11 @@ build/
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+
+# Generated files
+*.db
+brain.db
+.DS_Store
+*.pyc

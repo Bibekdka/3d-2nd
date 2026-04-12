@@ -68,7 +68,6 @@ def init_db():
             wks = sh.worksheet(WORKSHEET_NAME)
         except gspread.WorksheetNotFound:
             wks = sh.add_worksheet(title=WORKSHEET_NAME, rows=100, cols=10)
-            # Create Headers
             wks.append_row(["type", "source", "details", "amount", "summary", "tags", "images", "created_at"])
             
     except Exception as e:

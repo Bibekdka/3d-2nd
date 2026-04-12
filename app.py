@@ -228,7 +228,6 @@ def main():
         
         if uploaded_files:
             total_invoice = 0
-            # Process files loop...
             for stl in uploaded_files:
                 stl.seek(0)
                 stats = analyze_single_file_content(
@@ -262,7 +261,7 @@ def main():
             st.divider()
             c1, c2, c3 = st.columns(3)
             c1.metric("Subtotal", f"₹{round(total_invoice, 2)}")
-            c2.metric("GST ({gst_percent}%)", f"₹{round(gst_amt, 2)}")
+            c2.metric(f"GST ({gst_percent}%)", f"₹{round(gst_amt, 2)}")
             c3.metric("GRAND TOTAL", f"₹{round(grand_total, 2)}")
             
             if st.button("💾 Save Quote to DB"):
