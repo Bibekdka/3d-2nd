@@ -34,16 +34,19 @@ def get_gspread_client():
 # --- CORE FUNCTIONS ---
 def check_connection():
     """Checks if we can access the Google Sheet."""
+    if "gsheets" not in st.secrets:
+        return {"status": False, "error": "Configuration Missing"}
+        
     try:
         client = get_gspread_client()
-        if not client: return False
+        if not client: return {"status": False, "error": "Auth Failed"}
         
         # Try to open the sheet
         client.open(SHEET_NAME)
-        return True
+        return {"status": True, "error": None}
     except Exception as e:
         print(f"DB CONNECTION ERROR: {e}")
-        return False
+        return {"status": False, "error": str(e)}
 
 def init_db():
     """

@@ -11,10 +11,17 @@ try:
         secrets_data = toml.load(f)
     
     # Mock st.secrets
-    # Streamlit secrets behaves like a dict but also an object, 
-    # but for simple dict access this patch might be enough if code uses st.secrets["key"]
     st.secrets = secrets_data
-    print("✅ Secrets loaded and mocked for testing.")
+    
+    # Mock other st functions to avoid ScriptRunContext errors and see output
+    st.error = lambda x: print(f"❌ [MOCK ST.ERROR]: {x}")
+    st.warning = lambda x: print(f"⚠️ [MOCK ST.WARNING]: {x}")
+    st.success = lambda x: print(f"✅ [MOCK ST.SUCCESS]: {x}")
+    st.info = lambda x: print(f"ℹ️ [MOCK ST.INFO]: {x}")
+    
+    print(f"✅ Secrets loaded. Keys: {list(secrets_data.keys())}")
+    if "gsheets" not in secrets_data:
+        print("⚠️ 'gsheets' section MISSING from secrets.toml!")
 except Exception as e:
     print(f"❌ Failed to load secrets: {e}")
     sys.exit(1)

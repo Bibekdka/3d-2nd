@@ -5,6 +5,8 @@ import pandas as pd
 import time
 import os
 
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # --- IMPORTS ---
 from database import add_entry, load_history, get_db_stats, check_connection, init_db
@@ -27,19 +29,22 @@ def main():
     if "printers" not in st.session_state: 
         st.session_state["printers"] = PRINTER_PROFILES.copy()
 
-    # Initialize DB
+    # Initialize DB (Safe init)
     init_db()
 
     # --- SIDEBAR ---
     with st.sidebar:
         st.title("🧠 3D Business Brain")
         
-        if st.button("🚑 Quick Diagnosis"):
-            ai_status = ai_health_check()
-            if ai_status["status"] == "online": 
-                st.success(f"AI: OK ({ai_status.get('model', 'Unknown')})")
-            else: 
-                st.error(f"AI: {ai_status['message']}")
+        # Quick Health Status
+        ai_status = ai_health_check()
+        db_status = check_connection()
+        
+        if ai_status["status"] == "online" and db_status["status"]:
+            st.success("System: ONLINE")
+        else:
+            if not db_status["status"]: st.warning("DB: Offline")
+            if ai_status["status"] != "online": st.warning(f"AI: {ai_status['status']}")
                 
         st.divider()
         st.subheader("🤖 AI Control")
@@ -55,14 +60,13 @@ def main():
         st.session_state["ai_enabled"] = ai_toggle
 
         if ai_toggle:
-            ai_status = ai_health_check()
             if ai_status["status"] == "online":
-                st.success(f"AI Connected ({ai_status['model']})")
+                st.success(f"Connected: {ai_status['model']}")
             else:
-                st.error("AI Enabled but NOT Connected")
-                st.info("Start Ollama + AI server to connect")
+                st.error("AI Enabled but Offline")
+                st.caption(ai_status["message"])
         else:
-            st.warning("AI Disabled (No AI calls)")
+            st.info("AI Disabled")
 
         st.divider()
         st.subheader("🖨️ Tech Specs")
@@ -86,84 +90,145 @@ def main():
         delivery_fee = st.number_input("Delivery Fee (₹)", 0, 2000, 100)
 
     # --- TABS ---
-    tab_scrape, tab_local, tab_history, tab_db, tab_health = st.tabs(
+    tab_intelli, tab_calc, tab_health = st.tabs(
         [
-            "🌐 Forensic Scout",
-            "💼 Business Calculator",
-            "📚 Memory Bank",
-            "🗄 Database Explorer",
-            "🩺 Health"
+            "🧠 Intelli-DB",
+            "💼 Quote Calculator",
+            "🩺 System Health"
         ]
     )
 
-    # --- TAB 1: WEB SCOUT ---
-    with tab_scrape:
-        st.header("🕵️ Model Intelligence Scout")
-        url = st.text_input("Paste Model URL")
+    # --- TAB 1: INTELLI-DB (Merged Scraper + DB) ---
+    with tab_intelli:
+        # --- SECTION A: ADD INTELLIGENCE ---
+        with st.expander("🕵️ Add New Intelligence (Scrape & Analyze)", expanded=True):
+            st.caption("Paste a URL from MakerWorld, Printables, or Thingiverse to analyze and save.")
+            
+            c_url, c_btn = st.columns([4, 1])
+            url = c_url.text_input("Model URL", placeholder="https://...")
+            
+            if c_btn.button("🚀 Analyze", type="primary"):
+                if not url:
+                    st.toast("Please enter a URL first.")
+                else:
+                    with st.status("Deploying Agents...", expanded=True) as status:
+                        def update_ui(msg): st.write(f"_{msg}_")
+                        data = scrape_model_page(url, status_callback=update_ui)
+                        
+                        if "error" in data:
+                            status.update(label="❌ Extraction Failed", state="error")
+                            st.error(data["error"])
+                            # Don't stop, let them try again
+                        else:
+                            st.write("🧠 Reading geometry...")
+                            prompt = f"Analyze this 3D model for printing risks, commercial viability, and optimal settings. Summary: {data['text'][:6000]}"
+                            
+                            # --- AI LOGIC ---
+                            if st.session_state.get("ai_enabled"):
+                                res = ai_analyze(prompt)
+                            else:
+                                res = {
+                                    "summary": "AI Disabled",
+                                    "details": "Enable AI in sidebar for full analysis.\n\nExtracted Text Sample:\n" + data['text'][:500] + "..."
+                                }
+                            
+                            tags = ai_generate_tags(res['details'])
+                            
+                            # Store in session state for display/saving
+                            st.session_state['last_scan'] = {
+                                "url": url,
+                                "summary": res['summary'],
+                                "details": res['details'],
+                                "tags": tags,
+                                "images": data.get("images", [])
+                            }
+                            status.update(label="✅ Analysis Complete", state="complete", expanded=False)
+
+            # Display Result & Save
+            if 'last_scan' in st.session_state:
+                scan = st.session_state['last_scan']
+                st.divider()
+                
+                col_img, col_txt = st.columns([1, 2])
+                with col_img:
+                    if scan['images']:
+                        st.image(scan['images'][0], caption="Primary Preview", use_container_width=True)
+                        with st.expander("More Images"):
+                            for img in scan['images'][1:4]:
+                                st.image(img)
+                
+                with col_txt:
+                    st.subheader("📝 Analysis Report")
+                    st.markdown(scan['details'])
+                    st.info(f"Tags: {scan['tags']}")
+                    
+                    if st.button("💾 Save to Knowledge Base"):
+                        if not db_status["status"]:
+                            st.error(f"Cannot save: {db_status['error']}")
+                        else:
+                            if add_entry("Web Scrape", scan['url'], scan['details'], 0, scan['summary'], scan['tags'], scan['images']):
+                                st.success("✅ Saved to Database!")
+                                time.sleep(1)
+                                st.rerun() # Refresh to show in table below
+                            else:
+                                st.error("Database Error.")
+
+        st.divider()
         
-        if st.button("🚀 Analyze Link", type="primary"):
-            with st.status("Deploying Agents...", expanded=True) as status:
-                def update_ui(msg): st.write(f"_{msg}_")
-                data = scrape_model_page(url, status_callback=update_ui)
-                
-                if "error" in data:
-                    status.update(label="❌ Extraction Failed", state="error")
-                    st.error(data["error"])
-                    st.stop()
-                
-                st.write("🧠 Analyzing design geometry...")
-                prompt = f"Analyze this 3D model for printing risks and summary: {data['text'][:5000]}"
-                
-                st.write("🧠 Analyzing design geometry...")
-                prompt = f"Analyze this 3D model for printing risks and summary: {data['text'][:5000]}"
-                
-                # --- AI LOGIC WITH GUARD ---
-                if st.session_state.get("ai_enabled"):
-                    res = ai_analyze(prompt)
-                else:
-                    res = {
-                        "summary": "AI Disabled",
-                        "details": "Enable AI in sidebar to generate analysis.\n\n" + data['text'][:500] + "..."
-                    }
-                
-                # If AI returned error (even when enabled)
-                if res.get("summary") in ["Error", "Offline", "AI Error"] or "missing" in res.get("details", "").lower():
-                    st.warning(f"AI Issue: {res.get('details')}. Showing raw text.")
+        # --- SECTION B: KNOWLEDGE BASE (DB View) ---
+        st.subheader("📚 Knowledge Base")
+        
+        if not db_status["status"]:
+            st.error(f"⚠️ Database Offline: {db_status['error']}")
+            st.info("Check the Health tab for diagnosis.")
+        else:
+            df = load_history()
+            if df.empty:
+                st.info("Database is empty. Add some intelligence above!")
+            else:
+                # --- Filters ---
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    if 'type' in df.columns:
+                        type_options = ["All"] + sorted(df["type"].dropna().unique().tolist())
+                    else: type_options = ["All"]
+                    type_filter = st.selectbox("Filter by Type", type_options)
+                with c2:
+                    search = st.text_input("Search (URL, tags)")
+                with c3:
+                    sort_by = st.selectbox("Sort", ["Newest", "Oldest"])
 
+                # --- Apply Filters ---
+                filtered_df = df.copy()
+                if type_filter != "All":
+                    filtered_df = filtered_df[filtered_df["type"] == type_filter]
+                if search:
+                    filtered_df = filtered_df[filtered_df.apply(lambda row: search.lower() in str(row).lower(), axis=1)]
                 
-                tags = ai_generate_tags(res['details'])
+                if sort_by == "Newest" and "created_at" in filtered_df.columns:
+                    filtered_df = filtered_df.sort_values("created_at", ascending=False)
+                elif sort_by == "Oldest" and "created_at" in filtered_df.columns:
+                    filtered_df = filtered_df.sort_values("created_at", ascending=True)
+
+                # Format Date for Display
+                if "created_at" in filtered_df.columns:
+                     filtered_df["Date"] = pd.to_datetime(filtered_df["created_at"]).dt.strftime("%Y-%m-%d %H:%M")
+                     # Reorder columns to put Date first
+                     cols = ["Date"] + [c for c in filtered_df.columns if c != "Date" and c != "created_at"]
+                     filtered_df = filtered_df[cols]
+
+                st.dataframe(filtered_df, use_container_width=True, hide_index=True)
                 
-                st.session_state['last_scan'] = {
-                    "url": url,
-                    "summary": res['summary'],
-                    "details": res['details'],
-                    "tags": tags,
-                    "images": data.get("images", [])
-                }
-                status.update(label="✅ Analysis Complete", state="complete", expanded=False)
+                st.download_button("⬇️ Download CSV", filtered_df.to_csv(index=False), "brain_dump.csv", "text/csv")
 
-        if 'last_scan' in st.session_state:
-            scan = st.session_state['last_scan']
-            if scan['images']:
-                st.image(scan['images'][:3], width=200, caption=["Img 1", "Img 2", "Img 3"])
-            
-            st.markdown("### 📝 AI Report")
-            st.markdown(scan['details'])
-            st.info(f"Tags: {scan['tags']}")
-            
-            if st.button("💾 Save to Brain"):
-                if add_entry("Web Scrape", scan['url'], scan['details'], 0, scan['summary'], scan['tags']):
-                    st.success("Saved!")
-                else:
-                    st.error("Database Error.")
-
-    # --- TAB 2: BUSINESS CALCULATOR ---
-    with tab_local:
-        st.header("💼 Quote Generator")
+    # --- TAB 2: QUOTE CALCULATOR ---
+    with tab_calc:
+        st.header("💼 Intelligent Quote Generator")
         uploaded_files = st.file_uploader("Upload STL Files", type=["stl"], accept_multiple_files=True)
         
         if uploaded_files:
             total_invoice = 0
+            # Process files loop...
             for stl in uploaded_files:
                 stl.seek(0)
                 stats = analyze_single_file_content(
@@ -186,6 +251,9 @@ def main():
                 total_invoice += final_item_price
 
                 with st.expander(f"{stl.name} - ₹{round(final_item_price, 2)}"):
+                    c_a, c_b = st.columns(2)
+                    c_a.metric("Print Time", f"{round(p_time, 2)} hr")
+                    c_b.metric("Material", f"{round(stats['Weight (g)'], 1)}g")
                     st.json(stats)
 
             gst_amt = total_invoice * (gst_percent/100)
@@ -194,122 +262,52 @@ def main():
             st.divider()
             c1, c2, c3 = st.columns(3)
             c1.metric("Subtotal", f"₹{round(total_invoice, 2)}")
-            c2.metric("GST", f"₹{round(gst_amt, 2)}")
+            c2.metric("GST ({gst_percent}%)", f"₹{round(gst_amt, 2)}")
             c3.metric("GRAND TOTAL", f"₹{round(grand_total, 2)}")
             
-            if st.button("💾 Save Quote"):
-                 if add_entry("Quote", "Batch", f"Total: {grand_total}", grand_total, "Quote", "#quote"):
-                    st.success("Saved!")
+            if st.button("💾 Save Quote to DB"):
+                 if not db_status["status"]:
+                     st.error("Cannot save: Database Offline")
+                 else:
+                     details_str = f"Files: {[f.name for f in uploaded_files]}, Subtotal: {total_invoice}"
+                     if add_entry("Quote", "Batch File Upload", details_str, grand_total, "Customer Quote", "#quote"):
+                        st.success("✅ Quote Saved!")
 
-    # --- TAB 3: HISTORY ---
-    with tab_history:
-        st.header("📚 History")
-        df = load_history()
-        if not df.empty: st.dataframe(df, use_container_width=True)
-        else: st.info("No history yet.")
-
-    # --- TAB 4: DATABASE EXPLORER ---
-    with tab_db:
-        st.header("🗄 Database Explorer")
-
-        df = load_history()
-
-        if df.empty:
-            st.warning("Database is empty.")
-            # We don't stop here so the rest of the UI still renders if needed, 
-            # but user said 'st.stop()', so we follow instructions.
-            st.stop()
-
-        # --- Filters ---
-        c1, c2, c3 = st.columns(3)
-
-        with c1:
-            # Handle potential missing 'type' column safely
-            if 'type' in df.columns:
-                type_options = ["All"] + sorted(df["type"].dropna().unique().tolist())
-            else:
-                type_options = ["All"]
-            
-            type_filter = st.selectbox(
-                "Filter by Type",
-                type_options
-            )
-
-        with c2:
-            search = st.text_input("Search (URL, tags, details)")
-
-        with c3:
-            sort_by = st.selectbox(
-                "Sort by",
-                ["Newest", "Oldest", "Highest Amount", "Lowest Amount"]
-            )
-
-        # --- Apply Filters ---
-        filtered_df = df.copy()
-
-        if type_filter != "All":
-            filtered_df = filtered_df[filtered_df["type"] == type_filter]
-
-        if search:
-            # Robust string conversion for search
-            filtered_df = filtered_df[
-                filtered_df.apply(
-                    lambda row: search.lower() in str(row).lower(),
-                    axis=1
-                )
-            ]
-
-        # --- Sorting ---
-        if sort_by == "Newest" and "created_at" in filtered_df.columns:
-            filtered_df = filtered_df.sort_values("created_at", ascending=False)
-        elif sort_by == "Oldest" and "created_at" in filtered_df.columns:
-            filtered_df = filtered_df.sort_values("created_at", ascending=True)
-        elif sort_by == "Highest Amount" and "amount" in filtered_df.columns:
-            filtered_df = filtered_df.sort_values("amount", ascending=False)
-        elif sort_by == "Lowest Amount" and "amount" in filtered_df.columns:
-            filtered_df = filtered_df.sort_values("amount", ascending=True)
-
-        # --- Display ---
-        st.dataframe(filtered_df, use_container_width=True)
-
-        # --- Export ---
-        st.download_button(
-            "⬇️ Download CSV",
-            filtered_df.to_csv(index=False),
-            file_name="database_export.csv",
-            mime="text/csv"
-        )
-
-    # --- HEALTH TAB ---
+    # --- TAB 3: HEALTH DASHBOARD ---
     with tab_health:
-        st.header("🩺 System Health")
+        st.header("🩺 System Diagnostics")
         
-        col1, col2 = st.columns(2)
-        with col1:
-            db_is_connected = check_connection()
-            st.metric("Database", "Online" if db_is_connected else "Offline", 
-                     delta="Connected" if db_is_connected else "-Disconnected")
-            
-        with col2:
-            st.markdown("### 🤖 Local AI (Ollama)")
-            if not st.session_state.get("ai_enabled"):
-                st.warning("AI Disabled")
-            else:
-                ai = ai_health_check()
-                if ai["status"] == "online":
-                    st.success(f"Online: {ai['model']}")
-                else:
-                    st.error("Offline")
-                    st.info("Run: start_ai.bat")
-        
+        # 1. Database Check
+        st.subheader("1. Database Connection")
+        if db_status["status"]:
+            st.success("✅ Google Sheets API: Connected")
+            st.caption(f"Target Sheet: {SHEET_NAME}") # Placeholder, real check was inside
+        else:
+            st.error("❌ Google Sheets API: Disconnected")
+            st.code(f"Error: {db_status['error']}")
+            if "Missing" in str(db_status["error"]):
+                st.info("💡 Action: Add your service account JSON to secrets.toml under [gsheets]")
+
         st.divider()
-        with st.expander("🛠️ Deep Debugger (Click if AI is failing)", expanded=False):
-            if st.button("Run Connection Test"):
+
+        # 2. AI Check
+        st.subheader("2. AI Intelligence (Ollama)")
+        col_ai_1, col_ai_2 = st.columns(2)
+        with col_ai_1:
+            st.metric("Status", ai_status["status"].upper(), 
+                     delta="Online" if ai_status["status"] == "online" else "Offline",
+                     delta_color="normal" if ai_status["status"] == "online" else "inverse")
+        with col_ai_2:
+            st.metric("Model", ai_status["model"])
+            
+        st.caption(f"Message: {ai_status['message']}")
+        
+        if ai_status["status"] != "online":
+            st.warning("To fix: Run 'start_ai.bat' or ensure Ollama is serving.")
+            if st.button("🛠️ Run Deep Connection Test"):
                 logs = ai_debug_connection()
-                for log in logs:
-                    if "❌" in log: st.error(log)
-                    elif "✅" in log: st.success(log)
-                    else: st.info(log)
+                st.write(logs)
+
 
 if __name__ == "__main__":
     main()

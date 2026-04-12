@@ -51,27 +51,28 @@ def scrape_model_page(url, status_callback=None):
             except Exception as e:
                 report(f"⚠️ Navigation warning: {e}")
 
-            report("🔍 Scanning technical data...")
-            # Click load more to get comments (Vital for AI Analysis)
-            triggers = ["Load more", "Show more", "View all", "Comments"]
-            for t in triggers:
-                try:
-                    btn = page.get_by_text(t, exact=False).first
-                    if btn.is_visible():
-                        btn.click(timeout=500)
-                        page.wait_for_timeout(200)
-                except: pass
+            # Scroll to bottom to trigger lazy loading
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            page.wait_for_timeout(2000)
+            page.evaluate("window.scrollTo(0, 0)") # Scroll back up
+            page.wait_for_timeout(1000)
+
+            # Click standard gallery expansion buttons if they exist
+            try:
+                page.get_by_role("button", name="Show all").click(timeout=1000)
+            except: pass
 
             text = page.inner_text("body")
             
-            # Filter for useful images
+            # Filter for useful images with broader acceptance but strict exclusion
             images = page.eval_on_selector_all("img", """
                 imgs => imgs.filter(i => 
                     i.src.startsWith('http') && 
                     !i.src.includes('avatar') && 
                     !i.src.includes('icon') &&
                     !i.src.includes('logo') &&
-                    (i.naturalWidth > 150 || i.closest('.comment-list') || i.closest('.comment-body'))
+                    !i.src.includes('svg') &&
+                    (i.naturalWidth > 200 || i.naturalHeight > 200)
                 ).map(i => i.src)
             """)
             
