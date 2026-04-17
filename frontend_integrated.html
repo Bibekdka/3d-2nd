@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PrintForge + 3D Brain — Marketplace & AI</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a0a0b;
+    --surface: #111113;
+    --card: #18181c;
+    --border: rgba(255,255,255,0.08);
+    --accent: #e8f55a;
+    --accent2: #ff6b35;
+    --success: #4ade80;
+    --text: #f0f0f0;
+    --muted: #888;
+    --font-head: 'Syne', sans-serif;
+    --font-body: 'DM Sans', sans-serif;
+    --radius: 12px;
+    --radius-lg: 20px;
+  }
+  body { background: var(--bg); color: var(--text); font-family: var(--font-body); min-height: 100vh; }
+  #root { min-height: 100vh; }
+  ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: var(--bg); } ::-webkit-scrollbar-thumb { background: #333; }
+  input, textarea, select { font-family: var(--font-body); }
+  button { font-family: var(--font-head); cursor: pointer; }
+  a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useContext, createContext, useCallback } = React;
+
+const API = 'http://localhost:8000';  // Change to your deployed URL
+
+const AppCtx = createContext(null);
+function useApp() { return useContext(AppCtx); }
+
+// API Helper
+const api = async (path, opts = {}) => {
+  const token = localStorage.getItem('token');
+  const res = await fetch(`${API}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...opts.headers },
+    ...opts
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Error'); }
+  return res.json();
+};
+
+// ====== UI COMPONENTS ======
+const S = {
+  btn: (variant = 'primary', small) => ({
+    background: variant === 'primary' ? 'var(--accent)' : variant === 'danger' ? '#ff4444' : 'transparent',
+    color: variant === 'primary' ? '#0a0a0b' : variant === 'danger' ? '#fff' : 'var(--text)',
+    border: variant === 'ghost' ? '1px solid var(--border)' : 'none',
+    borderRadius: 8,
+    padding: small ? '6px 14px' : '10px 22px',
+    fontSize: small ? 12 : 14,
+    fontWeight: 700,
+    letterSpacing: '0.03em',
+    cursor: 'pointer',
+    transition: 'opacity 0.15s'
+  }),
+  input: { background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', color: 'var(--text)', fontSize: 14, width: '100%', outline: 'none' },
+  card: { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)' },
+};
+
+// NAV
+function Nav() {
+  const { user, setPage, cart, setUser, page } = useApp();
+  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
+  return (
+    <nav style={{ sticky: 'top', zIndex: 100, background: 'rgba(10,10,11,0.95)', backdropFilter: 'blur(16px)', borderBottom: '1px solid var(--border)', padding: '0 5vw' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 20, height: 60 }}>
+        <button onClick={() => setPage('home')} style={{ fontSize: 24, background: 'none', border: 'none', color: 'var(--accent)', fontFamily: 'var(--font-head)', fontWeight: 800 }}>🧠 3D Forge</button>
+        <div style={{ flex: 1, display: 'flex', gap: 20 }}>
+          {user && <button onClick={() => setPage('ai_calculator')} style={{ ...S.btn('ghost', true) }}>🤖 AI Tools</button>}
+          <button onClick={() => setPage('shop')} style={{ ...S.btn('ghost', true) }}>Shop</button>
+          {user && <button onClick={() => setPage('my_quotes')} style={{ ...S.btn('ghost', true) }}>📋 My Quotes</button>}
+          {user && user.is_admin && <button onClick={() => setPage('admin')} style={{ ...S.btn('ghost', true) }}>Admin</button>}
+        </div>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+          {user ? (
+            <>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>{user.name}</span>
+              <button onClick={() => setPage('cart')} style={{ ...S.btn('primary', true), position: 'relative' }}>
+                🛒 {cartCount}
+              </button>
+              <button onClick={() => { localStorage.removeItem('token'); setUser(null); setPage('home'); }} style={{ ...S.btn('ghost', true) }}>Logout</button>
+            </>
+          ) : (
+            <button onClick={() => setPage('login')} style={S.btn('primary', true)}>Login</button>
+          )}
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+// HERO
+function Hero() {
+  const { setPage } = useApp();
+  return (
+    <section style={{ padding: '80px 5vw', maxWidth: 1200, margin: '0 auto', textAlign: 'center' }}>
+      <h1 style={{ fontFamily: 'var(--font-head)', fontSize: 56, fontWeight: 800, marginBottom: 16, letterSpacing: '-1px' }}>
+        🧠 PrintForge + AI Brain
+      </h1>
+      <p style={{ fontSize: 18, color: 'var(--muted)', marginBottom: 32, maxWidth: 600, margin: '0 auto 32' }}>
+        Shop premium 3D prints or use our AI tools to generate smart quotes. Convert quotes to products and manage your entire 3D printing business.
+      </p>
+      <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
+        <button onClick={() => setPage('shop')} style={{ ...S.btn('primary'), fontSize: 16 }}>Browse Shop</button>
+        <button onClick={() => setPage('ai_calculator')} style={{ ...S.btn('ghost'), fontSize: 16, border: '2px solid var(--accent)' }}>AI Quote Calculator</button>
+      </div>
+    </section>
+  );
+}
+
+// PRODUCT CARD
+function ProductCard({ p }) {
+  const { setPage, setSelectedProduct, addToCart } = useApp();
+  return (
+    <div style={{ ...S.card, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.2s' }}
+      onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'}
+      onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+    >
+      <div style={{ aspectRatio: '4/3',background: '#1e1e22', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {p.image_url ? <img src={p.image_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={p.name} /> : <div style={{ fontSize: 40 }}>📦</div>}
+      </div>
+      <div style={{ padding: '16px' }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{p.name}</h3>
+        <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8, minHeight: 24 }}>{p.category}</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontFamily: 'var(--font-head)', fontSize: 18, fontWeight: 800, color: 'var(--accent)' }}>₹{p.price}</span>
+          <button onClick={() => { setSelectedProduct(p); setPage('product'); }} style={{ ...S.btn('primary', true) }}>View</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// SHOP PAGE
+function Shop() {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api('/products').then(setProducts).catch(() => setProducts([])).finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '40px 5vw' }}>
+      <h2 style={{ fontFamily: 'var(--font-head)', fontWeight: 800, fontSize: 36, marginBottom: 30 }}>Shop Products</h2>
+      {loading ? <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 60 }}>Loading...</div> :
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 20 }}>
+          {products.map(p => <ProductCard key={p.id} p={p} />)}
+        </div>
+      }
+    </div>
+  );
+}
+
+// PRODUCT DETAIL
+function ProductDetail() {
+  const { selectedProduct: p, addToCart, setPage, user } = useApp();
+  const [qty, setQty] = useState(1);
+  const [reviews, setReviews] = useState([]);
+
+  useEffect(() => {
+    if (!p) return;
+    api(`/products/${p.id}/reviews`).then(setReviews).catch(() => {});
+  }, [p]);
+
+  if (!p) return <div style={{ textAlign: 'center', padding: 80 }}>Product not found</div>;
+
+  return (
+    <div style={{ maxWidth: 1000, margin: '0 auto', padding: '40px 5vw' }}>
+      <button onClick={() => setPage('shop')} style={{ ...S.btn('ghost', true), marginBottom: 24 }}>← Back</button>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40 }}>
+        <div style={{ ...S.card, aspectRatio: '1/1', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {p.image_url ? <img src={p.image_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ fontSize: 60 }}>📦</div>}
+        </div>
+        <div>
+          <h1 style={{ fontFamily: 'var(--font-head)', fontSize: 36, fontWeight: 800, marginBottom: 12 }}>{p.name}</h1>
+          <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 20 }}>{p.description}</p>
+          <div style={{ ...S.card, padding: '16px', marginBottom: 20 }}>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>Material: {p.material || 'N/A'} • Print Time: {p.print_time || 'N/A'} • Weight: {p.weight_g || 'N/A'}g</div>
+          </div>
+          <div style={{ fontSize: 28, fontFamily: 'var(--font-head)', fontWeight: 800, color: 'var(--accent)', marginBottom: 20 }}>₹{p.price}</div>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+            <input type="number" min="1" value={qty} onChange={e => setQty(parseInt(e.target.value) || 1)} style={{ ...S.input, width: 80 }} />
+            <button onClick={() => { addToCart(p, qty); setPage('cart'); }} style={{ ...S.btn('primary'), flex: 1 }}>Add to Cart</button>
+          </div>
+          <h3 style={{ marginBottom: 12, fontWeight: 700 }}>Reviews ({reviews.length})</h3>
+          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+            {reviews.map(r => <div key={r.id} style={{ ...S.card, padding: 12, marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <strong>{r.user_name}</strong>
+                <span>{'⭐'.repeat(r.rating)}</span>
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--muted)' }}>{r.comment}</p>
+            </div>)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// AI CALCULATOR (QUOTE GENERATOR)
+function AICalculator() {
+  const { user, setPage } = useApp();
+  const [file, setFile] = useState(null);
+  const [calculating, setCalculating] = useState(false);
+  const [result, setResult] = useState(null);
+  const [form, setForm] = useState({
+    density: 1.24,
+    cost_kg: 1200,
+    infill: 20,
+    walls: 20,
+    electricity_rate: 10,
+    labor_rate: 200,
+    profit_margin: 50,
+    gst: 18,
+    delivery: 100
+  });
+
+  const handleCalculate = async () => {
+    if (!file || !user) { setPage('login'); return; }
+    setCalculating(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('form', JSON.stringify(form));
+
+      // Simulate calculation (you'd call actual backend)
+      const arrayBuffer = await file.arrayBuffer();
+      // In real implementation, send to backend for STL analysis
+
+      const mockStats = {
+        weight_g: 145,
+        print_time: 8.5,
+        volume: 120,
+      };
+
+      const mat_cost = (mockStats.weight_g / 1000) * form.cost_kg;
+      const elec_cost = (350 / 1000) * mockStats.print_time * form.electricity_rate;
+      const labor_cost = mockStats.print_time * (form.labor_rate / 60);
+      const subtotal = mat_cost + elec_cost + labor_cost;
+      const profit = subtotal * (form.profit_margin / 100);
+      const gst = (subtotal + profit) * (form.gst / 100);
+      const total = subtotal + profit + gst + form.delivery;
+
+      setResult({
+        file_name: file.name,
+        weight_g: mockStats.weight_g,
+        print_time: mockStats.print_time,
+        material_cost: mat_cost,
+        electricity_cost: elec_cost,
+        labor_cost: labor_cost,
+        subtotal: subtotal,
+        gst_amount: gst,
+        total: total
+      });
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
+    setCalculating(false);
+  };
+
+  const saveQuote = async () => {
+    if (!result) return;
+    try {
+      const quote = {
+        file_name: result.file_name,
+        weight_g: result.weight_g,
+        print_time: result.print_time,
+        material_cost: result.material_cost,
+        electricity_cost: result.electricity_cost,
+        labor_cost: result.labor_cost,
+        subtotal: result.subtotal,
+        gst_amount: result.gst_amount,
+        total: result.total
+      };
+      await api('/quotes', { method: 'POST', body: JSON.stringify(quote) });
+      alert('Quote saved! Check My Quotes to manage it.');
+      setResult(null);
+      setFile(null);
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 900, margin: '0 auto', padding: '40px 5vw' }}>
+      <h2 style={{ fontFamily: 'var(--font-head)', fontWeight: 800, fontSize: 32, marginBottom: 30 }}>🤖 AI Quote Calculator</h2>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 30 }}>
+        <div>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--muted)' }}>Upload STL File</label>
+          <input type="file" accept=".stl" onChange={e => setFile(e.target.files[0])} style={{ ...S.input, cursor: 'pointer' }} />
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--muted)' }}>Material</label>
+          <select value={form.density} onChange={e => setForm({...form, density: parseFloat(e.target.value)})} style={S.input}>
+            <option value="1.24">PLA (1.24 g/cm³)</option>
+            <option value="1.27">PETG (1.27 g/cm³)</option>
+            <option value="1.04">ABS (1.04 g/cm³)</option>
+          </select>
+        </div>
+
+        {Object.keys(form).filter(k => k !== 'density').map(key => (
+          <div key={key}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--muted)', textTransform: 'capitalize' }}>{key.replace('_', ' ')}</label>
+            <input type="number" value={form[key]} onChange={e => setForm({...form, [key]: parseFloat(e.target.value)})} style={S.input} />
+          </div>
+        ))}
+      </div>
+
+      <button onClick={handleCalculate} disabled={!file || calculating} style={{ ...S.btn('primary'), width: '100%', marginBottom: 30 }}>
+        {calculating ? 'Calculating...' : '📊 Calculate Quote'}
+      </button>
+
+      {result && (
+        <div style={{ ...S.card, padding: '24px' }}>
+          <h3 style={{ marginBottom: 16, fontWeight: 700 }}>Quote for {result.file_name}</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Weight</div>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>{result.weight_g}g</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Print Time</div>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>{result.print_time}h</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Material Cost</div>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>₹{result.material_cost.toFixed(2)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>Total</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent)' }}>₹{result.total.toFixed(2)}</div>
+            </div>
+          </div>
+          <button onClick={saveQuote} style={{ ...S.btn('primary'), width: '100%' }}>💾 Save Quote</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// MY QUOTES
+function MyQuotes() {
+  const { user, setPage } = useApp();
+  const [quotes, setQuotes] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) { setPage('login'); return; }
+    api('/quotes/my').then(setQuotes).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div style={{ maxWidth: 900, margin: '0 auto', padding: '40px 5vw' }}>
+      <h2 style={{ fontFamily: 'var(--font-head)', fontWeight: 800, fontSize: 32, marginBottom: 30 }}>📋 My Quotes</h2>
+      {loading ? <div style={{ textAlign: 'center', color: 'var(--muted)' }}>Loading...</div> : !quotes.length ? (
+        <p style={{ color: 'var(--muted)', textAlign: 'center', padding: 60 }}>No quotes yet. <a href="#" onClick={() => setPage('ai_calculator')}>Generate one</a></p>
+      ) : (
+        <div style={{ display: 'grid', gap: 16 }}>
+          {quotes.map(q => (
+            <div key={q.id} style={{ ...S.card, padding: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div>
+                  <h3 style={{ fontWeight: 700, marginBottom: 4 }}>{q.file_name}</h3>
+                  <p style={{ fontSize: 12, color: 'var(--muted)' }}>{new Date(q.created_at).toLocaleDateString()}</p>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent)' }}>₹{q.total.toFixed(2)}</div>
+                  <span style={{ fontSize: 12, background: q.status === 'accepted' ? 'rgba(74,222,128,0.2)' : 'rgba(168,85,247,0.2)', color: q.status === 'accepted' ? 'var(--success)' : '#a78bfa', padding: '2px 8px', borderRadius: 4 }}>
+                    {q.status}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// CART
+function Cart() {
+  const { cart, setCart, user, setPage } = useApp();
+  const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
+
+  const placeOrder = async () => {
+    if (!user) { setPage('login'); return; }
+    try {
+      await api('/orders', { method: 'POST', body: JSON.stringify({ items: cart.map(i => ({ product_id: i.id, quantity: i.qty })) }) });
+      setCart([]);
+      alert('Order placed!');
+      setPage('home');
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  if (!cart.length) return (
+    <div style={{ textAlign: 'center', padding: '80px 5vw' }}>
+      <div style={{ fontSize: 60, marginBottom: 16 }}>🛒</div>
+      <h2 style={{ fontFamily: 'var(--font-head)', fontSize: 28 }}>Cart is Empty</h2>
+      <button onClick={() => setPage('shop')} style={{ ...S.btn('primary'), marginTop: 20 }}>Continue Shopping</button>
+    </div>
+  );
+
+  return (
+    <div style={{ maxWidth: 800, margin: '0 auto', padding: '40px 5vw' }}>
+      <h2 style={{ fontFamily: 'var(--font-head)', fontWeight: 800, fontSize: 32, marginBottom: 30 }}>Your Cart</h2>
+      {cart.map(item => (
+        <div key={item.id} style={{ ...S.card, padding: '16px', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h4>{item.name}</h4>
+            <p style={{ fontSize: 12, color: 'var(--muted)' }}>₹{item.price} x {item.qty}</p>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>₹{(item.price * item.qty).toFixed(2)}</div>
+            <button onClick={() => setCart(c => c.filter(i => i.id !== item.id))} style={{ ...S.btn('danger', true) }}>Remove</button>
+          </div>
+        </div>
+      ))}
+      <div style={{ ...S.card, padding: '20px', marginTop: 20, marginBottom: 20 }}>
+        <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent)', marginBottom: 20 }}>Total: ₹{total.toFixed(2)}</div>
+        <button onClick={placeOrder} style={{ ...S.btn('primary'), width: '100%' }}>Place Order</button>
+      </div>
+    </div>
+  );
+}
+
+// LOGIN
+function Auth() {
+  const { setUser, setPage } = useApp();
+  const [tab, setTab] = useState('login');
+  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [loading, setLoading] = useState(false);
+
+  const handle = async () => {
+    setLoading(true);
+    try {
+      if (tab === 'login') {
+        const res = await api('/auth/login', { method: 'POST', body: JSON.stringify({ username: form.email, password: form.password }) });
+        localStorage.setItem('token', res.access_token);
+        const user = await api('/auth/me');
+        setUser(user);
+        setPage('home');
+      } else {
+        await api('/auth/register', { method: 'POST', body: JSON.stringify(form) });
+        setTab('login');
+      }
+    } catch (e) {
+      alert(e.message);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5vw' }}>
+      <div style={{ ...S.card, padding: '36px 32px', width: '100%', maxWidth: 420 }}>
+        <h2 style={{ fontFamily: 'var(--font-head)', fontSize: 24, marginBottom: 24, textAlign: 'center' }}>{tab === 'login' ? 'Login' : 'Create Account'}</h2>
+        {tab === 'register' && <input placeholder="Name" value={form.name} onChange={e => setForm({...form, name: e.target.value})} style={{ ...S.input, marginBottom: 12 }} />}
+        <input placeholder="Email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} style={{ ...S.input, marginBottom: 12 }} />
+        <input type="password" placeholder="Password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} style={{ ...S.input, marginBottom: 20 }} />
+        <button onClick={handle} disabled={loading} style={{ ...S.btn('primary'), width: '100%', marginBottom: 12 }}>{loading ? '...' : (tab === 'login' ? 'Login' : 'Register')}</button>
+        <button onClick={() => setTab(tab === 'login' ? 'register' : 'login')} style={{ ...S.btn('ghost'), width: '100%' }}>{tab === 'login' ? 'Create Account' : 'Back to Login'}</button>
+      </div>
+    </div>
+  );
+}
+
+// ADMIN DASHBOARD
+function Admin() {
+  const { user, setPage } = useApp();
+  const [tab, setTab] = useState('dashboard');
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.is_admin) { setPage('home'); return; }
+    api('/admin/stats').then(setStats).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  if (!user?.is_admin) return <div style={{ textAlign: 'center', padding: 80 }}>Admin access only</div>;
+
+  return (
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '40px 5vw' }}>
+      <h2 style={{ fontFamily: 'var(--font-head)', fontWeight: 800, fontSize: 32, marginBottom: 30 }}>📊 Admin Dashboard</h2>
+      {loading ? <div style={{ textAlign: 'center', color: 'var(--muted)' }}>Loading...</div> : stats ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+          <div style={{ ...S.card, padding: '20px', textAlign: 'center' }}>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>Total Revenue</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent)' }}>₹{stats.total_revenue.toFixed(2)}</div>
+          </div>
+          <div style={{ ...S.card, padding: '20px', textAlign: 'center' }}>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>Total Orders</div>
+            <div style={{ fontSize: 24, fontWeight: 800 }}>{stats.total_orders}</div>
+          </div>
+          <div style={{ ...S.card, padding: '20px', textAlign: 'center' }}>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>Total Products</div>
+            <div style={{ fontSize: 24, fontWeight: 800 }}>{stats.total_products}</div>
+          </div>
+          <div style={{ ...S.card, padding: '20px', textAlign: 'center' }}>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>Total Quotes</div>
+            <div style={{ fontSize: 24, fontWeight: 800 }}>{stats.total_quotes}</div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// MAIN APP
+function App() {
+  const [page, setPage] = useState('home');
+  const [user, setUser] = useState(null);
+  const [cart, setCart] = useState(() => { try { return JSON.parse(localStorage.getItem('cart') || '[]'); } catch { return []; } });
+  const [selectedProduct, setSelectedProduct] = useState(null);
+
+  useEffect(() => { localStorage.setItem('cart', JSON.stringify(cart)); }, [cart]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) api('/auth/me').then(setUser).catch(() => localStorage.removeItem('token'));
+  }, []);
+
+  const addToCart = (product, qty = 1) => {
+    setCart(c => {
+      const existing = c.find(i => i.id === product.id);
+      return existing ? c.map(i => i.id === product.id ? { ...i, qty: i.qty + qty } : i) : [...c, { ...product, qty }];
+    });
+  };
+
+  const ctx = { page, setPage, user, setUser, cart, setCart, addToCart, selectedProduct, setSelectedProduct };
+
+  const pages = {
+    home: () => <><Hero /><Shop /></>,
+    shop: Shop,
+    product: ProductDetail,
+    ai_calculator: AICalculator,
+    my_quotes: MyQuotes,
+    cart: Cart,
+    login: Auth,
+    admin: Admin,
+  };
+
+  const PageComp = pages[page] || pages.home;
+
+  return (
+    <AppCtx.Provider value={ctx}>
+      <Nav />
+      <PageComp />
+    </AppCtx.Provider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
