@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  # Main Streamlit application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    environment:
+      APP_ENV: development
+      DEBUG: "false"
+      LOG_LEVEL: INFO
+      LOCAL_AI_URL: http://ai-server:8000
+    volumes:
+      - .:/app
+    depends_on:
+      - ai-server
+    networks:
+      - brain-network
+    restart: unless-stopped
+
+  # AI Server (Ollama)
+  ai-server:
+    image: ollama/ollama:latest
+    ports:
+      - "8000:8000"
+      - "11434:11434"
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - brain-network
+    restart: unless-stopped
+    # Note: First time, run: docker exec brain-ai-server ollama pull phi3:mini
+
+  # Optional: PostgreSQL for advanced database features (future)
+  # db:
+  #   image: postgres:15-alpine
+  #   environment:
+  #     POSTGRES_DB: brain_3d
+  #     POSTGRES_USER: brain
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   networks:
+  #     - brain-network
+  #   restart: unless-stopped
+
+networks:
+  brain-network:
+    driver: bridge
+
+volumes:
+  ollama_data:
+  # postgres_data:

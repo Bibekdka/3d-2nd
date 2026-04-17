@@ -1,0 +1,39 @@
+[theme]
+primaryColor = "#FF6B35"
+backgroundColor = "#0F1419"
+secondaryBackgroundColor = "#1D252D"
+textColor = "#FFF"
+font = "sans serif"
+
+[client]
+showErrorDetails = false
+maxMessageSize = 200
+toolbarMode = "minimal"
+
+[logger]
+level = "info"
+messageFormat = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+[server]
+port = 8501
+headless = true
+runOnSave = false
+enableXsrfProtection = true
+enableCORS = true
+
+# Production security settings
+[server.sslShowWarnings]
+enabled = false
+
+# Performance optimization
+[browser]
+gatherUsageStats = false
+serverAddress = "localhost"
+
+# Timeout settings
+[client.toolbarMode]
+value = "minimal"
+
+# Allow embedding in iframes if needed
+[server.allowRunOnSave]
+value = false

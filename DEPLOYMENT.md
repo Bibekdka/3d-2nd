@@ -6,16 +6,52 @@ Your 3D Brain application is **Production Ready** and uses **Google Sheets** for
 
 | File | Purpose |
 | :--- | :--- |
-| `requirements.txt` | Python dependencies (updated for GSheets). |
-| `packages.txt` | System dependencies for Playwright (Critical for Cloud). |
+| `requirements.txt` | Python dependencies (updated for production). |
+| `.streamlit/config.toml` | Streamlit production configuration. |
+| `config.py` | Centralized configuration management. |
+| `.env.example` | Environment variable template. |
 | `app.py` | Main entry point. |
-| `database.py` | Database logic (Now uses **Google Sheets**). |
+| `database.py` | Database logic (Google Sheets). |
 | `.streamlit/secrets.toml` | **CRITICAL**: Contains Google Service Account credentials. |
+| `PRODUCTION_GUIDE.md` | **[READ THIS]** Complete production deployment guide. |
 
-## 🚀 deployment Option: Render.com
+## 🚀 Quick Start
+
+### 1. Local Development
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Copy env template
+cp .env.example .env
+
+# Install Playwright (for scraper)
+playwright install chromium
+
+# Run app
+streamlit run app.py
+
+# In another terminal, run AI server
+python local_ai_server.py
+```
+
+### 2. Production Deployment
+
+**See [PRODUCTION_GUIDE.md](PRODUCTION_GUIDE.md) for:**
+- Complete setup instructions
+- Platform-specific deployment (Render, Docker, Cloud Run)
+- Secrets management
+- Monitoring & logging
+- Troubleshooting
+
+### 3. Environment Variables
+
+See `.env.example` for configuration template.
+
+## deployment Option: Render.com
 
 1.  **New Web Service**: Connect your GitHub repo.
-2.  **Runtime**: Python 3.
+2.  **Runtime**: Python 3.11
 3.  **Build Command**:
     ```bash
     pip install -r requirements.txt && playwright install chromium
@@ -25,9 +61,44 @@ Your 3D Brain application is **Production Ready** and uses **Google Sheets** for
     streamlit run app.py
     ```
 5.  **Environment Variables**:
-    *   `STREAMLIT_SECRETS_PATH`: `/etc/secrets/secrets.toml` (See step 6 below).
-    *   `STREAMLIT_SAFE_MODE`: `false`
-    *   **Note**: You DO NOT need to add `GROK_API_KEY` here if you include it in the secrets file below. If not, add it here.
+    *   `APP_ENV`: `production`
+    *   `DEBUG`: `false`
+    *   `LOG_LEVEL`: `INFO`
+
+6.  **Secrets** (Set via Render dashboard):
+    *   Add the `gsheets` configuration from `.streamlit/secrets.toml`
+
+## ✅ Production Checklist
+
+- [ ] Environment variables configured
+- [ ] Google Sheets API credentials set up
+- [ ] AI server deployed or configured
+- [ ] Database connection tested
+- [ ] Logging configured
+- [ ] Monitoring set up
+- [ ] Backup strategy in place
+- [ ] Health check passing
+
+## 📊 Health Status
+
+Check the **System Health** tab in the app for:
+- Database connection status
+- AI server availability
+- Model information
+- Detailed diagnostics
+
+## 🔍 Logging
+
+Logs are written to `app.log` (local) or platform logs (production).
+
+Check for issues:
+```bash
+tail -f app.log | grep ERROR
+```
+
+## 🆘 Support
+
+For detailed troubleshooting, see [PRODUCTION_GUIDE.md](PRODUCTION_GUIDE.md)
 
 6.  **Secret Files (CRITICAL STEP)**:
     Render does not read `.streamlit/secrets.toml` from your repo (it's ignored). You must add it manually.
