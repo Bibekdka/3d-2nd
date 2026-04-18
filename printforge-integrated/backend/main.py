@@ -11,7 +11,9 @@ from pathlib import Path
 # Add parent directory for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
@@ -19,10 +21,7 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-import sqlite3, json, io
-import requests
-import trimesh
-import numpy as np
+import sqlite3, json
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -52,6 +51,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
 # ── SECURITY ──────────────────────────────────────────────────
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
@@ -68,7 +75,7 @@ def create_token(data: dict):
 
 # ── DATABASE SETUP ────────────────────────────────────────────
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -280,7 +287,7 @@ def enrich_products(products, db):
 
 @app.get("/api/products")
 def list_products(db=Depends(get_db)):
-    products = db.execute("SELECT * FROM products WHERE stock > 0 ORDER BY created_at DESC").fetchall()
+    products = db.execute("SELECT * FROM products WHERE stock > 0 ORDER BY created_at DESC LIMIT 100").fetchall()
     return enrich_products(products, db)
 
 @app.get("/api/products/{product_id}")
@@ -296,7 +303,7 @@ def get_reviews(product_id: int, db=Depends(get_db)):
         SELECT r.*, u.name as user_name FROM reviews r
         JOIN users u ON r.user_id = u.id
         WHERE r.product_id = ?
-        ORDER BY r.created_at DESC
+        ORDER BY r.created_at DESC LIMIT 50
     """, (product_id,)).fetchall()
     return rows_to_list(rows)
 
@@ -345,7 +352,7 @@ def create_order(data: OrderCreate, user=Depends(get_current_user), db=Depends(g
 
 @app.get("/api/orders/my")
 def my_orders(user=Depends(get_current_user), db=Depends(get_db)):
-    orders = db.execute("SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC", (user["id"],)).fetchall()
+    orders = db.execute("SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 50", (user["id"],)).fetchall()
     result = []
     for o in orders:
         d = dict(o)
@@ -368,13 +375,13 @@ def create_quote(data: QuoteCreate, user=Depends(get_current_user), db=Depends(g
 
 @app.get("/api/quotes/my")
 def my_quotes(user=Depends(get_current_user), db=Depends(get_db)):
-    quotes = db.execute("SELECT * FROM quotes WHERE user_id = ? ORDER BY created_at DESC", (user["id"],)).fetchall()
+    quotes = db.execute("SELECT * FROM quotes WHERE user_id = ? ORDER BY created_at DESC LIMIT 50", (user["id"],)).fetchall()
     return rows_to_list(quotes)
 
 # ── ADMIN ROUTES ──────────────────────────────────────────────
 @app.get("/api/admin/products")
 def admin_list_products(admin=Depends(require_admin), db=Depends(get_db)):
-    products = db.execute("SELECT * FROM products ORDER BY created_at DESC").fetchall()
+    products = db.execute("SELECT * FROM products ORDER BY created_at DESC LIMIT 200").fetchall()
     return enrich_products(products, db)
 
 @app.post("/api/admin/products", status_code=201)
@@ -410,7 +417,7 @@ def admin_list_orders(admin=Depends(require_admin), db=Depends(get_db)):
     orders = db.execute("""
         SELECT o.*, u.email as user_email FROM orders o
         JOIN users u ON o.user_id = u.id
-        ORDER BY o.created_at DESC
+        ORDER BY o.created_at DESC LIMIT 100
     """).fetchall()
     result = []
     for o in orders:
@@ -457,23 +464,31 @@ def health():
         "version": "1.0.0"
     }
 
-# ── ROOT ────────────────────────────────────────────────────
-@app.get("/")
-def root():
-    return {
-        "message": "PrintForge + 3D Business Brain API",
-        "docs": "/api/docs",
-        "version": "1.0.0"
-    }
+# ── PLATFORM FRONTEND HOSTING ────────────────────────────────
+frontend_path = Path(__file__).parent.parent / "frontend"
+if frontend_path.exists():
+    app.mount("/static", StaticFiles(directory=str(frontend_path)), name="static")
+
+    @app.get("/")
+    def serve_frontend():
+        return FileResponse(str(frontend_path / "index.html"))
+else:
+    @app.get("/")
+    def root():
+        return {
+            "message": "PrintForge + 3D Business Brain API",
+            "docs": "/api/docs",
+            "version": "1.0.0"
+        }
 
 # ── STARTUP ───────────────────────────────────────────────────
 @app.on_event("startup")
 def startup():
     init_db()
-    print("✅ PrintForge + 3D Business Brain API Started")
-    print("📊 Database: " + DB_PATH)
-    print("🔑 Default Admin: admin@printforge.com / admin123")
-    print("📖 Docs: http://localhost:8000/api/docs")
+    print("PrintForge + 3D Business Brain API Started")
+    print("Database: " + DB_PATH)
+    print("Default Admin: admin@printforge.com / admin123")
+    print("Docs: http://localhost:8000/api/docs")
 
 if __name__ == "__main__":
     import uvicorn
